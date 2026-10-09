@@ -1,5 +1,5 @@
 import { config } from './config.js';
-import { chatJSON, FORMAT_NAMES } from './ai.js';
+import { chatJSON, FORMAT_NAMES, PLATFORM_KEYS } from './ai.js';
 
 // Web research + knowledge extraction, modeled on the litmus deep-reporting
 // pipeline (parse -> web sweep -> grounded synthesis), reimplemented for
@@ -131,13 +131,13 @@ Respond ONLY with valid JSON (no markdown fences) in exactly this shape:
       "rationale": "<why this angle can go viral: what emotion/reaction it drives and which knowledge it leverages>",
       "facts": ["<specific supporting facts: quotes, numbers, competitor names, outcomes — copied from the knowledge, never invented>"],
       "formats": ["<1-3 format names from the allowed lists below>"],
-      "platformFit": "<x|reddit|both>"
+      "platformFit": "<${PLATFORM_KEYS.join('|')}|both>"
     }
   ]
 }
 
-Allowed X formats: ${FORMAT_NAMES.x.join(', ')}
-Allowed Reddit formats: ${FORMAT_NAMES.reddit.join(', ')}
+Allowed formats:
+${PLATFORM_KEYS.map((k) => `- ${k}: ${FORMAT_NAMES[k].join(', ')}`).join('\n')}
 
 Rules:
 - Aim for maximum COUNT and maximum DIVERSITY — no two angles with the same core claim or emotion.
@@ -286,7 +286,7 @@ function normalizeReport(parsed, sources, brief) {
 }
 
 function normalizeAngles(parsed) {
-  const validFormats = new Set([...FORMAT_NAMES.x, ...FORMAT_NAMES.reddit]);
+  const validFormats = new Set(Object.values(FORMAT_NAMES).flat());
   return asArray(parsed.angles)
     .filter((a) => a && a.title)
     .map((a) => ({
@@ -298,7 +298,7 @@ function normalizeAngles(parsed) {
         .map(String)
         .filter((f) => validFormats.has(f))
         .slice(0, 3),
-      platformFit: ['x', 'reddit', 'both'].includes(a.platformFit) ? a.platformFit : 'both',
+      platformFit: [...PLATFORM_KEYS, 'both'].includes(a.platformFit) ? a.platformFit : 'both',
     }));
 }
 

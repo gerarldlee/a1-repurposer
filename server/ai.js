@@ -86,14 +86,200 @@ const REDDIT_FORMATS = [
 ];
 
 // Format names (for angle suggestions elsewhere in the app)
-export const FORMAT_NAMES = {
-  x: X_FORMATS.map((f) => f.format),
-  reddit: REDDIT_FORMATS.map((f) => f.format),
+const TIKTOK_FORMATS = [
+  {
+    format: 'hook_video',
+    description:
+      'A short-video script whose FIRST 1.5 SECONDS stop the scroll (on-screen hook: a surprising claim, a bold promise, or a "wait, what?" visual). Body = the caption plus a shot-by-shot script (3-6 beats) with the on-screen text for each beat. Hook must work with sound off.',
+  },
+  {
+    format: 'story_time',
+    description:
+      'A first-person mini-story (something happened to me → tension → payoff → lesson) built as a short video script. Relatable and comment-bait. Body = caption + shot-by-shot beats. Never fictional - ground it in the source idea.',
+  },
+  {
+    format: 'tutorial_demo',
+    description:
+      'A "watch me do this" how-to: a clear result in the first 2 seconds, then 3-5 fast steps. Body = caption + a step-by-shot script where each step is one visual action. Add on-screen text for each step.',
+  },
+  {
+    format: 'trend_remix',
+    description:
+      'A script built to ride a trending sound, format or meme template - it fills the template\'s structure but carries the source idea\'s message. Body names the trend/audio to use (as a suggestion the creator picks on-platform) plus the caption and beats.',
+  },
+  {
+    format: 'listicle_video',
+    description:
+      '"3 things that changed how I ..." - a numbered list delivered fast on screen. Body = caption + one beat per item with bold on-screen text. Items must each be quotable on their own.',
+  },
+  {
+    format: 'duet_stitch',
+    description:
+      'A script designed to be DUETED or STITCHED: it reacts to or builds on an existing video, or explicitly invites others to stitch it with their take. Body = caption + beats + a line inviting duets/stitches.',
+  },
+  {
+    format: 'myth_bust',
+    description:
+      'A "everyone thinks X. It\'s actually Y" myth-busting short. Body = caption + beats that state the myth, then the correction with the proof from the source idea. Strong comments and shares.',
+  },
+];
+
+const YT_SHORTS_FORMATS = [
+  {
+    format: 'shorts_hook',
+    description:
+      'A YouTube Shorts script opening with a promise the viewer wants kept (a number, a result, a warning). Body = the title/description plus shot-by-shot beats, written so the payoff lands inside 60 seconds.',
+  },
+  {
+    format: 'answer_short',
+    description:
+      'A "why / how / what is X" short that fully answers one specific question in under 60 seconds. Body = title + description + beats. Write it so it also works as a searchable answer, not just a scroll-past.',
+  },
+  {
+    format: 'tutorial_short',
+    description:
+      'A step-by-step how-to Short: result first, then 3-5 numbered steps, one visual per step with on-screen text. Body = title + description + beats.',
+  },
+  {
+    format: 'listicle_short',
+    description:
+      'A "top 3 / 5 ..." Short with one punchy, self-contained item per beat. Body = title + description + beats. Each item should be the kind of thing a viewer screenshots.',
+  },
+  {
+    format: 'story_short',
+    description:
+      'A compact first-person narrative Short (setup → tension → resolution → lesson) that ends on a line worth rewatching. Body = title + description + beats.',
+  },
+  {
+    format: 'comparison_short',
+    description:
+      'A side-by-side "before vs after" or "A vs B" Short that makes the difference obvious visually. Body = title + description + beats, one per side of the comparison.',
+  },
+];
+
+const INSTAGRAM_FORMATS = [
+  {
+    format: 'reel_script',
+    description:
+      'An Instagram Reel script: a scroll-stopping first second, a tight story arc, and a loopable ending. Body = the caption (with a natural CTA) plus shot-by-shot beats with on-screen text.',
+  },
+  {
+    format: 'carousel_caption',
+    description:
+      'A carousel/post set: title = the cover line for slide 1, body = the caption plus slide-by-slide copy (one idea per slide, skimmable). The caption should make someone swipe to the last slide.',
+  },
+  {
+    format: 'photo_caption',
+    description:
+      'A caption written to pair with an ATTACHED PHOTO (the user supplies the image - proof, a screenshot, a behind-the-scenes shot). Title = a short punchy hook line, body = the caption that frames the photo in a few lines and lets the image carry the weight.',
+  },
+  {
+    format: 'story_sequence',
+    description:
+      'A Stories sequence: 4-7 individual frames with the copy for each frame (one line per frame, swipe-up/poll/question CTA on the last). Body = caption + frame-by-frame copy.',
+  },
+  {
+    format: 'saveable_list',
+    description:
+      'A "save this for later" post: title = a clear, useful promise ("5 settings I change on every client project"), body = the numbered list in the caption, written so it is genuinely worth bookmarking. Saves are the ranking signal on Instagram.',
+  },
+  {
+    format: 'behind_the_scenes',
+    description:
+      'A behind-the-scenes / founder-story post that humanizes the account (the mistake, the process, the real numbers). Title = hook line, body = caption. Honest, first-person, no sales tone.',
+  },
+];
+
+// Every supported platform: label for prompts/UI, its formats, the rules that
+// shape the output, and whether the platform needs a separate title/hook field.
+const PLATFORMS = {
+  x: {
+    label: 'X (Twitter)',
+    formats: X_FORMATS,
+    needsTitle: false,
+    rules: (subreddit) => `
+Platform: X (Twitter)
+- Hard limit: each post max 280 characters.
+- First line must stop the scroll. Short, punchy lines. Line breaks encouraged.
+- At most 1 hashtag. No links in the text (user adds links when editing if needed).
+- No emoji spam (max 1-2, only if natural).
+- Replies are the heaviest signal on X - where natural for the format, invite a response rather than just broadcasting.`,
+  },
+  reddit: {
+    label: 'Reddit',
+    formats: REDDIT_FORMATS,
+    needsTitle: true,
+    rules: (subreddit) => `
+Platform: Reddit (subreddit: r/${subreddit || 'generic'})
+- Title max 300 chars, must be specific and concrete, never vague clickbait.
+- Body uses markdown, plain and conversational, humble and genuine.
+- ABSOLUTELY no promotional/marketing language, no "sign up", no "check out my blog". Redditors detect and destroy that instantly.
+- Write like a real member of r/${subreddit || 'the subreddit'} sharing their experience.`,
+  },
+  tiktok: {
+    label: 'TikTok',
+    formats: TIKTOK_FORMATS,
+    needsTitle: true,
+    rules: () => `
+Platform: TikTok (vertical short video, the user attaches the video file themselves)
+- "title" is the ON-SCREEN HOOK: the text that appears in the first 1-2 seconds. Max ~8 words, no hashtag, must be readable at a glance.
+- "body" has two clearly labelled parts: "Caption:" (max ~150 characters, the text typed into the caption box) and "Script:" (shot-by-shot beats, each with its on-screen text).
+- The hook must work with the sound OFF. The first 1.5 seconds decide everything.
+- 3-6 beats, total video 15-45 seconds.
+- At most 3 hashtags, at the end of the caption. No emoji spam.
+- Every shot must be vertical (9:16) and visual. Never write a beat that is just talking to camera with no visual interest.`,
+  },
+  yt_shorts: {
+    label: 'YouTube Shorts',
+    formats: YT_SHORTS_FORMATS,
+    needsTitle: true,
+    rules: () => `
+Platform: YouTube Shorts (vertical short video, the user attaches the video file themselves)
+- "title" is the video TITLE: max 100 characters, front-load the keyword or the curiosity gap, no clickbait the video does not pay off.
+- "body" has two clearly labelled parts: "Description:" (1-2 short sentences plus 3-4 relevant hashtags) and "Script:" (shot-by-shot beats with on-screen text).
+- Vertical 9:16, total runtime 30-60 seconds, retention matters more than length.
+- Open on the payoff or a strong promise, never on an intro or logo.
+- No links in the description (YouTube suppresses them) and no emoji spam.`,
+  },
+  instagram: {
+    label: 'Instagram',
+    formats: INSTAGRAM_FORMATS,
+    needsTitle: true,
+    rules: () => `
+Platform: Instagram (Reel, carousel, photo or Stories; the user attaches the media file themselves)
+- "title" is the hook line: the on-screen text for a Reel/photo, or the cover line for a carousel. Max ~12 words.
+- "body" has two clearly labelled parts: "Caption:" (the caption text) and then the format-specific content (script beats, slide copy, or story frames), each line prefixed with the beat/slide/frame number.
+- Write for saves and shares first, likes second. One clear idea per slide or beat.
+- Hashtags: 3-5 max, grouped at the end of the caption. No spam blocks of 20.
+- No emoji spam, no "link in bio" unless the format genuinely ends on a CTA.`,
+  },
 };
 
+export const PLATFORM_KEYS = Object.keys(PLATFORMS);
+
+export function isPlatform(key) {
+  return Object.hasOwn(PLATFORMS, key);
+}
+
+export function platformLabel(key) {
+  return PLATFORMS[key]?.label || key;
+}
+
+export function platformNeedsTitle(key) {
+  return Boolean(PLATFORMS[key]?.needsTitle);
+}
+
+// Video-first platforms: they cannot be posted without an attached video file.
+export const VIDEO_PLATFORMS = ['tiktok', 'yt_shorts'];
+
+// Format names (for angle suggestions elsewhere in the app)
+export const FORMAT_NAMES = Object.fromEntries(
+  PLATFORM_KEYS.map((key) => [key, PLATFORMS[key].formats.map((f) => f.format)])
+);
+
 function buildPrompt(idea, platform, subreddit, count, angle) {
-  const formats = platform === 'x' ? X_FORMATS : REDDIT_FORMATS;
-  const formatList = formats.map((f) => `- "${f.format}": ${f.description}`).join('\n');
+  const spec = PLATFORMS[platform];
+  const formatList = spec.formats.map((f) => `- "${f.format}": ${f.description}`).join('\n');
 
   const angleBlock = angle
     ? `
@@ -106,23 +292,11 @@ ${angle.formats?.length ? `- Suggested formats for this angle: ${angle.formats.j
 `
     : '';
 
-  const platformRules =
-    platform === 'x'
-      ? `
-Platform: X (Twitter)
-- Hard limit: each post max 280 characters.
-- First line must stop the scroll. Short, punchy lines. Line breaks encouraged.
-- At most 1 hashtag. No links in the text (user adds links when editing if needed).
-- No emoji spam (max 1-2, only if natural).
-- Replies are the heaviest signal on X - where natural for the format, invite a response rather than just broadcasting.`
-      : `
-Platform: Reddit (subreddit: r/${subreddit || 'generic'})
-- Title max 300 chars, must be specific and concrete, never vague clickbait.
-- Body uses markdown, plain and conversational, humble and genuine.
-- ABSOLUTELY no promotional/marketing language, no "sign up", no "check out my blog". Redditors detect and destroy that instantly.
-- Write like a real member of r/${subreddit || 'the subreddit'} sharing their experience.`;
+  const titleShape = spec.needsTitle
+    ? '"title": "<the title / hook line this platform needs>",'
+    : '"title": null,';
 
-  return `You are a viral content strategist who deeply understands what makes content take off on ${platform === 'x' ? 'X (Twitter)' : 'Reddit'}.
+  return `You are a viral content strategist who deeply understands what makes content take off on ${spec.label}.
 
 A user wants to repurpose this newsletter/blog idea or content into ${count} distinct posts.
 
@@ -131,7 +305,7 @@ SOURCE IDEA/CONTENT:
 ${idea}
 """
 ${angleBlock}
-${platformRules}
+${spec.rules(subreddit)}
 
 Generate ${count} post variants, each using a DIFFERENT one of these proven viral formats:
 ${formatList}
@@ -141,7 +315,7 @@ Respond ONLY with valid JSON in exactly this shape (no markdown fences, no comme
   "variants": [
     {
       "format": "<one of the format names above>",
-      "title": ${platform === 'reddit' ? '"<reddit post title>"' : 'null'},
+      ${titleShape}
       "body": "<the post text>"
     }
   ]
@@ -216,7 +390,7 @@ export async function generateVariants({ idea, platform, subreddit, count = 4, a
     platform,
     format: v.format || null,
     subreddit: platform === 'reddit' ? subreddit || null : null,
-    title: platform === 'reddit' ? v.title || null : null,
+    title: platformNeedsTitle(platform) ? v.title || null : null,
     body: v.body || '',
   }));
 }

@@ -5,4 +5,7 @@ data.db-journal
 data.db-wal
 data.db-shm
 .x-session/
+.tiktok-session/
+.yt_shorts-session/
+.instagram-session/
 uploads/

@@ -1,6 +1,6 @@
 # Repurposer
 
-Turn newsletters and blog ideas into viral **X posts** and **Reddit submissions**. Generate → approve → schedule → auto-post.
+Turn newsletters and blog ideas into viral posts for **X**, **Reddit**, **TikTok**, **YT Shorts** and **Instagram**. Generate → approve → schedule → auto-post.
 
 ## Setup
 
@@ -24,6 +24,7 @@ Open **http://localhost:3000**
 | Ollama | `.env` → `OLLAMA_BASE_URL` + `OLLAMA_MODEL` (local, free, no key) |
 | Reddit account | Settings tab in the UI, or `.env` |
 | X account | `.env` → `X_BEARER_TOKEN` (official API, 500 posts/mo free) **or** "Connect X Account" button in Settings (browser session, no API needed) |
+| TikTok / YT Shorts / Instagram | Settings tab → "Connect <platform>" (browser session, no API key needed) |
 | Research (Knowledge tab) | `.env` → `TAVILY_API_KEY` (from tavily.com, free tier: 1000 searches/mo) |
 
 The active provider is shown on the server startup line and in the Settings tab; you can switch providers without restarting. Switching in the Settings tab writes `AI_PROVIDER=...` back to `.env`, so `.env` is always the single source of truth — editing it by hand works too (restart to pick up manual edits). Providers that aren't configured stay visible but unusable, so you can flip between them freely.
@@ -37,12 +38,12 @@ The active provider is shown on the server startup line and in the Settings tab;
 
 ## How it works
 
-1. **Create** — paste your idea/content, pick platform (X or Reddit + subreddit), hit Generate. AI produces 3–8 variants in proven viral formats.
+1. **Create** — paste your idea/content, pick platform (X, Reddit + subreddit, TikTok, YT Shorts, Instagram), hit Generate. AI produces 3–8 variants in proven viral formats.
 2. **Knowledge** — the same idea/content/blog/product runs through a research pipeline: it's parsed into a brief, the web is swept (Tavily) for competitors, complaints, trends and similar startups, then synthesized into a knowledge report with sub-tabs (Features, Competitors, Pain Points, Market Gap, Customers, Trends, Similar Bets, Penetration, Pricing, Positioning, Wedge, Risks, Sources). Runs in the background with live progress; every claim cites its sources.
 3. **Angles** — from a knowledge report, generate 10–20 distinct content angles, each grounded in a specific fact (a pain point, a competitor weakness, a trend, a pricing gap, a similar startup's lesson) with a hook and suggested viral formats. Each angle has a "Generate posts from this angle" button that feeds the Create tab's generator with the angle + its supporting evidence.
-4. **Approve** — edit, regenerate individual variants, attach a screenshot (X), approve the ones you like.
+4. **Approve** — edit, regenerate individual variants, attach media (screenshot on X, photo on Instagram, video on TikTok/Shorts/Instagram), approve the ones you like.
 5. **Schedule** — pick a date/time (or post immediately).
-6. **Auto-post** — a scheduler checks every minute and publishes due posts. Reddit goes through the official API; X tries the official API first (if configured) and falls back to a saved browser session.
+6. **Auto-post** — a scheduler checks every minute and publishes due posts. Reddit goes through the official API; X tries the official API first (if configured) and falls back to a saved browser session. TikTok, YT Shorts and Instagram post through saved browser sessions.
 
 ### X viral formats (8)
 
@@ -63,8 +64,16 @@ The `screenshot` format (and any X variant) accepts an attached image (≤5MB, p
 
 > X's media upload API requires a *user-context* OAuth token — an app-only `X_BEARER_TOKEN` **cannot attach images**. Posts with images therefore always go through the browser-session path (Connect X Account in Settings). Text-only posts still use the API when configured.
 
+### Video posts (TikTok, YT Shorts, Instagram)
+
+- The AI writes the **hook** (an on-screen line, stored in the post title) and a **caption + script**. The poster pastes only the caption part to the platform — the script stays in the Queue tab for you to shoot.
+- **Attach the video yourself** in the Queue tab (mp4/mov/webm/m4v, ≤200MB). TikTok and YT Shorts refuse to post without it; Instagram accepts either a video (Reel) or a photo (post).
+- Connect the account once in Settings. Sessions are stored in `.tiktok-session/`, `.yt_shorts-session/` and `.instagram-session/`.
+- **These posters drive each platform's web UI, and those UIs change often.** If a post fails with "did not show an upload control" or similar, the session likely expired (reconnect in Settings) or the selectors in `server/poster/{tiktok,ytshorts,instagram}.js` need updating. Always check the account after a failure — a post may have gone through before the UI confirmed it.
+- YT Shorts uploads go through YouTube Studio, so the logged-in Google account must own a channel with Shorts enabled.
+
 ## Notes
 
-- Everything is local: SQLite (`data.db`), sessions (`.x-session/`), screenshots (`uploads/`), credentials. Don't commit them.
+- Everything is local: SQLite (`data.db`), sessions (`.x-session/`, `.tiktok-session/`, `.yt_shorts-session/`, `.instagram-session/`), media (`uploads/`), credentials. Don't commit them.
 - Browser-session posting to X is a fallback convenience for text — and the *only* path for image posts (see above). The official API tier is recommended for text-only volume (free tier covers 500 single posts/month).
 - Failed posts show the error in the Queue tab and can be retried with one click.

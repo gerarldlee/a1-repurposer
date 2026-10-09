@@ -6,11 +6,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new Database(path.join(__dirname, '..', 'data.db'));
 db.pragma('journal_mode = WAL');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS posts (
+const POSTS_SCHEMA = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_idea TEXT NOT NULL,
-    platform TEXT NOT NULL CHECK (platform IN ('x', 'reddit')),
+    platform TEXT NOT NULL CHECK (platform IN ('x', 'reddit', 'tiktok', 'yt_shorts', 'instagram')),
     format TEXT,
     subreddit TEXT,
     title TEXT,
@@ -21,9 +20,19 @@ db.exec(`
     result_url TEXT,
     error TEXT,
     image_path TEXT,
+    media_path TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+`;
+
+const POST_COLUMNS = [
+  'id', 'source_idea', 'platform', 'format', 'subreddit', 'title', 'body', 'status',
+  'scheduled_at', 'posted_at', 'result_url', 'error', 'image_path', 'media_path',
+  'created_at', 'updated_at',
+];
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS posts (${POSTS_SCHEMA});
 
   CREATE TABLE IF NOT EXISTS reddit_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,10 +67,31 @@ db.exec(`
   );
 `);
 
-// Migration for databases created before image support
-const hasImagePath = db.pragma("table_info(posts)").some((c) => c.name === 'image_path');
+// Migrations for databases created before image support
+const postColumns = () => db.pragma('table_info(posts)').map((c) => c.name);
+const hasImagePath = postColumns().includes('image_path');
 if (!hasImagePath) {
   db.exec('ALTER TABLE posts ADD COLUMN image_path TEXT');
+}
+
+// Migration for databases created before the video platforms (tiktok,
+// yt_shorts, instagram): SQLite cannot ALTER a CHECK constraint, so the table
+// is rebuilt. Only the columns the old table actually has are copied over.
+const postsSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'posts'").get()?.sql || '';
+if (!postsSql.includes("'tiktok'")) {
+  const copy = POST_COLUMNS.filter((c) => postColumns().includes(c));
+  db.transaction(() => {
+    db.exec(`CREATE TABLE posts_migrated (${POSTS_SCHEMA})`);
+    db.exec(`INSERT INTO posts_migrated (${copy.join(', ')}) SELECT ${copy.join(', ')} FROM posts`);
+    db.exec('DROP TABLE posts');
+    db.exec('ALTER TABLE posts_migrated RENAME TO posts');
+  })();
+  console.log('[db] migrated posts table for video platforms');
+}
+
+// Migration for databases created before video/media support
+if (!postColumns().includes('media_path')) {
+  db.exec('ALTER TABLE posts ADD COLUMN media_path TEXT');
 }
 
 const now = () => new Date().toISOString();
@@ -96,7 +126,7 @@ export function listScheduledPosts() {
 }
 
 export function updatePost(id, fields) {
-  const allowed = ['platform', 'format', 'subreddit', 'title', 'body', 'status', 'scheduled_at', 'posted_at', 'result_url', 'error', 'image_path'];
+  const allowed = ['platform', 'format', 'subreddit', 'title', 'body', 'status', 'scheduled_at', 'posted_at', 'result_url', 'error', 'image_path', 'media_path'];
   const updates = [];
   const values = {};
   for (const key of allowed) {

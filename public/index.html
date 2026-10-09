@@ -11,12 +11,21 @@
     <h1>📣 Repurposer</h1>
     <p class="tagline">Turn your newsletter or blog idea into viral X posts and Reddit submissions.</p>
     <nav>
-      <button class="tab-btn active" data-tab="create">Create</button>
-      <button class="tab-btn" data-tab="knowledge">Knowledge</button>
-      <button class="tab-btn" data-tab="angles">Angles</button>
-      <button class="tab-btn" data-tab="queue">Queue <span id="queue-badge" class="badge hidden">0</span></button>
-      <button class="tab-btn" data-tab="schedule">Schedule <span id="schedule-badge" class="badge hidden">0</span></button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
+      <div class="nav-row">
+        <button class="tab-btn active" data-tab="create">Create</button>
+        <button class="tab-btn" data-tab="knowledge">Knowledge</button>
+        <button class="tab-btn" data-tab="angles">Angles</button>
+        <button class="tab-btn" data-tab="queue">Queue <span id="queue-badge" class="badge hidden">0</span></button>
+        <button class="tab-btn" data-tab="schedule">Schedule <span id="schedule-badge" class="badge hidden">0</span></button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </div>
+      <div class="nav-row">
+        <button class="tab-btn" data-tab="ugc">AI UGC</button>
+        <button class="tab-btn" data-tab="avatar">AI Avatar</button>
+        <button class="tab-btn" data-tab="hook-demo">Hook &amp; Demo</button>
+        <button class="tab-btn" data-tab="memes">Memes</button>
+        <button class="tab-btn" data-tab="mix-match">Mix &amp; Match</button>
+      </div>
     </nav>
   </header>
 
@@ -31,12 +40,17 @@
           <label>Platform:</label>
           <label class="radio"><input type="radio" name="platform" value="x" checked /> X</label>
           <label class="radio"><input type="radio" name="platform" value="reddit" /> Reddit</label>
+          <label class="radio"><input type="radio" name="platform" value="tiktok" /> TikTok</label>
+          <label class="radio"><input type="radio" name="platform" value="yt_shorts" /> YT Shorts</label>
+          <label class="radio"><input type="radio" name="platform" value="instagram" /> Instagram</label>
         </div>
 
         <div class="row hidden" id="subreddit-row">
           <label for="subreddit">Subreddit (without r/):</label>
           <input type="text" id="subreddit" placeholder="e.g. Entrepreneur" />
         </div>
+
+        <p class="hint hidden" id="video-note">TikTok and YT Shorts posts need a video attached — the AI writes the hook and caption, you attach the file in the Queue tab.</p>
 
         <div class="row">
           <label for="count">Variants:</label>
@@ -123,6 +137,31 @@
       <div id="schedule"></div>
     </section>
 
+    <!-- AI UGC TAB -->
+    <section id="tab-ugc" class="tab">
+      <h2>AI UGC</h2>
+    </section>
+
+    <!-- AI AVATAR TAB -->
+    <section id="tab-avatar" class="tab">
+      <h2>AI Avatar</h2>
+    </section>
+
+    <!-- HOOK & DEMO TAB -->
+    <section id="tab-hook-demo" class="tab">
+      <h2>Hook &amp; Demo</h2>
+    </section>
+
+    <!-- MEMES TAB -->
+    <section id="tab-memes" class="tab">
+      <h2>Memes</h2>
+    </section>
+
+    <!-- MIX & MATCH TAB -->
+    <section id="tab-mix-match" class="tab">
+      <h2>Mix &amp; Match</h2>
+    </section>
+
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="tab">
       <div class="card">
@@ -165,6 +204,12 @@
           <button id="x-connect" class="primary">🔗 Connect X Account (opens browser)</button>
           <span id="x-connect-result" class="hint"></span>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>TikTok, YT Shorts &amp; Instagram</h2>
+        <p class="hint">These platforms have no posting API here — a browser window opens, you log in once, and the session is saved and reused for scheduled posts. Video posts need the media attached in the Queue tab.</p>
+        <div class="row" id="browser-connectors"></div>
       </div>
     </section>
   </main>

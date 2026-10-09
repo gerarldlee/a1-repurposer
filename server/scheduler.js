@@ -1,16 +1,17 @@
 import cron from 'node-cron';
 import { listPosts, updatePost } from './db.js';
-import { submitPost } from './poster/reddit.js';
-import { postToX } from './poster/x.js';
+import { dispatchPost, needsMedia } from './poster/index.js';
 
 async function dispatch(post) {
+  if (needsMedia(post.platform) && !post.media_path) {
+    updatePost(post.id, { status: 'failed', error: 'Attach a video file to this post before it can be posted.' });
+    return;
+  }
+
   updatePost(post.id, { status: 'posting', error: null });
 
   try {
-    const result =
-      post.platform === 'reddit'
-        ? await submitPost({ subreddit: post.subreddit, title: post.title, body: post.body })
-        : await postToX({ body: post.body, imagePath: post.image_path });
+    const result = await dispatchPost(post);
 
     updatePost(post.id, {
       status: 'posted',

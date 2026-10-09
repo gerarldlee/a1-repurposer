@@ -49,6 +49,20 @@ function switchTab(name) {
 
 // ---------------------------------------------------------------- create
 
+// Mirrors PLATFORMS in server/ai.js (platform key -> display label).
+const PLATFORMS = [
+  { v: 'x', t: 'X' },
+  { v: 'reddit', t: 'Reddit' },
+  { v: 'tiktok', t: 'TikTok' },
+  { v: 'yt_shorts', t: 'YT Shorts' },
+  { v: 'instagram', t: 'Instagram' },
+];
+const VIDEO_PLATFORMS = ['tiktok', 'yt_shorts'];
+// Platforms whose posts carry a separate hook/title line.
+const TITLE_PLATFORMS = ['reddit', 'tiktok', 'yt_shorts', 'instagram'];
+
+const platformLabel = (key) => PLATFORMS.find((p) => p.v === key)?.t || key;
+
 function platform() {
   return document.querySelector('input[name="platform"]:checked').value;
 }
@@ -56,6 +70,7 @@ function platform() {
 $$('input[name="platform"]').forEach((r) =>
   r.addEventListener('change', () => {
     $('#subreddit-row').classList.toggle('hidden', platform() !== 'reddit');
+    $('#video-note').classList.toggle('hidden', !VIDEO_PLATFORMS.includes(platform()));
   })
 );
 
@@ -113,7 +128,7 @@ function variantCard(post, { allowSchedule }) {
   function renderContent() {
     content.innerHTML = '';
     if (editing) {
-      if (post.platform === 'reddit') {
+      if (TITLE_PLATFORMS.includes(post.platform)) {
         const t = document.createElement('textarea');
         t.className = 'edit-title';
         t.rows = 2;
@@ -181,7 +196,7 @@ function variantCard(post, { allowSchedule }) {
           Object.assign(post, { format: fresh.format, title: fresh.title, body: fresh.body });
           await api(`/api/posts/${fresh.id}`, { method: 'DELETE' }); // drop the temp row; fields already copied
           renderContent();
-          renderImage();
+          renderMedia();
         } catch (err) {
           toast(err.message, true);
         } finally {
@@ -281,10 +296,13 @@ function variantCard(post, { allowSchedule }) {
     }
   }
 
-  function renderImage() {
+  function renderMedia() {
     imageArea.innerHTML = '';
-    if (post.platform !== 'x') return; // image attach is X-only for now
+    if (post.platform === 'x' || post.platform === 'instagram') renderImage();
+    if (VIDEO_PLATFORMS.includes(post.platform) || post.platform === 'instagram') renderVideo();
+  }
 
+  function renderImage() {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
@@ -303,7 +321,7 @@ function variantCard(post, { allowSchedule }) {
         try {
           const data = await api(`/api/posts/${post.id}/image`, { method: 'DELETE' });
           Object.assign(post, data.post);
-          renderImage();
+          renderMedia();
         } catch (err) {
           toast(err.message, true);
         }
@@ -313,8 +331,9 @@ function variantCard(post, { allowSchedule }) {
       imageArea.appendChild(wrap);
     } else {
       const attachBtn = document.createElement('button');
-      attachBtn.textContent = post.format === 'screenshot' ? '📸 Attach screenshot (required for this format)' : '📸 Attach image';
-      if (post.format === 'screenshot') attachBtn.classList.add('primary');
+      const photoFormat = post.format === 'screenshot' || post.format === 'photo_caption';
+      attachBtn.textContent = photoFormat ? '📸 Attach photo (required for this format)' : '📸 Attach image';
+      if (photoFormat) attachBtn.classList.add('primary');
       attachBtn.addEventListener('click', () => fileInput.click());
       imageArea.appendChild(attachBtn);
     }
@@ -332,8 +351,75 @@ function variantCard(post, { allowSchedule }) {
         });
         const data = await api(`/api/posts/${post.id}/image`, { method: 'POST', body: { image: dataUrl } });
         Object.assign(post, data.post);
-        renderImage();
-        toast('Screenshot attached.');
+        renderMedia();
+        toast('Image attached.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        fileInput.value = '';
+      }
+    });
+
+    imageArea.appendChild(fileInput);
+  }
+
+  function renderVideo() {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'video/mp4,video/quicktime,video/webm,video/x-m4v';
+    fileInput.className = 'hidden';
+
+    if (post.media_path) {
+      const wrap = document.createElement('div');
+      wrap.className = 'image-preview';
+      const video = document.createElement('video');
+      video.src = post.media_path;
+      video.controls = true;
+      video.preload = 'metadata';
+      video.style.maxWidth = '260px';
+      const name = document.createElement('div');
+      name.className = 'hint';
+      name.textContent = post.media_path.split('/').pop();
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕ Remove video';
+      removeBtn.className = 'danger';
+      removeBtn.addEventListener('click', async () => {
+        try {
+          const data = await api(`/api/posts/${post.id}/media`, { method: 'DELETE' });
+          Object.assign(post, data.post);
+          renderMedia();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+      wrap.appendChild(video);
+      wrap.appendChild(name);
+      wrap.appendChild(removeBtn);
+      imageArea.appendChild(wrap);
+    } else {
+      const attachBtn = document.createElement('button');
+      attachBtn.textContent = `🎬 Attach video (required to post to ${platformLabel(post.platform)})`;
+      attachBtn.className = 'primary';
+      attachBtn.addEventListener('click', () => fileInput.click());
+      imageArea.appendChild(attachBtn);
+    }
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (file.size > 200 * 1024 * 1024) return toast('Video must be 200MB or less.', true);
+      try {
+        // Raw bytes, not base64: the JSON api() helper would bloat a video by ~33%.
+        const res = await fetch(`/api/posts/${post.id}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type || 'video/mp4' },
+          body: file,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Upload failed (${res.status})`);
+        Object.assign(post, data.post);
+        renderMedia();
+        toast('Video attached.');
       } catch (err) {
         toast(err.message, true);
       } finally {
@@ -345,7 +431,7 @@ function variantCard(post, { allowSchedule }) {
   }
 
   renderContent();
-  renderImage();
+  renderMedia();
   renderActions();
   return el;
 }
@@ -888,7 +974,7 @@ function angleCard(a) {
   card.dataset.id = a.id;
 
   const tags = el('div', 'chip-row');
-  tags.appendChild(el('span', 'format-tag', a.platformFit === 'both' ? 'X + Reddit' : a.platformFit));
+  tags.appendChild(el('span', 'format-tag', a.platformFit === 'both' ? 'Multi-platform' : platformLabel(a.platformFit)));
   (a.formats || []).forEach((f) => tags.appendChild(el('span', 'format-tag', f)));
 
   const title = el('h3', 'angle-title', a.title);
@@ -906,11 +992,8 @@ function angleCard(a) {
   const controls = el('div', 'row angle-controls');
   const platformSel = el('select');
   platformSel.className = 'angle-platform';
-  const defaultPlatform = a.platformFit === 'reddit' ? 'reddit' : 'x';
-  [
-    { v: 'x', t: 'X' },
-    { v: 'reddit', t: 'Reddit' },
-  ].forEach((o) => {
+  const defaultPlatform = PLATFORMS.some((p) => p.v === a.platformFit) ? a.platformFit : 'x';
+  PLATFORMS.forEach((o) => {
     const opt = el('option', null, o.t);
     opt.value = o.v;
     platformSel.appendChild(opt);
@@ -1201,6 +1284,34 @@ async function loadSettings() {
     row('Reddit', s.reddit?.configured, `Saved (@${s.reddit?.username})`, 'Add credentials below');
     row('X — API', s.x?.api_configured, 'Bearer token set', 'No token (using browser fallback if connected)');
     row('X — browser session', s.x?.browser_session, 'Session saved', 'Not connected');
+
+    // One connect button + status row per browser-session platform
+    // (TikTok / YT Shorts / Instagram).
+    const connectors = $('#browser-connectors');
+    connectors.innerHTML = '';
+    Object.entries(s.browsers || {}).forEach(([key, info]) => {
+      row(`${info.label} — session`, info.browser_session, 'Session saved', 'Not connected (browser posters need this)');
+
+      const btn = document.createElement('button');
+      btn.textContent = info.browser_session ? `✅ ${info.label} connected` : `🔗 Connect ${info.label} (opens browser)`;
+      btn.className = info.browser_session ? '' : 'primary';
+      btn.disabled = info.browser_session;
+      const out = el('span', 'hint');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        out.textContent = `Browser window opening — log in to ${info.label} there. This can take a few minutes.`;
+        try {
+          await api(`/api/settings/${key}/connect`, { method: 'POST' });
+          out.textContent = `✅ ${info.label} session saved.`;
+          loadSettings();
+        } catch (err) {
+          out.textContent = `❌ ${err.message}`;
+          btn.disabled = false;
+        }
+      });
+      connectors.appendChild(btn);
+      connectors.appendChild(out);
+    });
   } catch (err) {
     toast(err.message, true);
   }

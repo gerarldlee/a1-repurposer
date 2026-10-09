@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config, AI_PROVIDERS, setAiProvider } from './config.js';
-import { generateVariants, activeProvider } from './ai.js';
+import { generateVariants, activeProvider, isPlatform, platformLabel, PLATFORM_KEYS, VIDEO_PLATFORMS } from './ai.js';
 import { runKnowledgeExtraction, generateAngles } from './research.js';
 import { startScheduler } from './scheduler.js';
 import {
@@ -11,8 +11,9 @@ import {
   createKnowledge, getKnowledge, listKnowledge, updateKnowledge, deleteKnowledge,
   replaceAngles, listAngles, getAngle, deleteAngle,
 } from './db.js';
-import { submitPost, verifyCredentials } from './poster/reddit.js';
-import { postToX, loginSession, hasXAccess, hasStoredSession } from './poster/x.js';
+import { verifyCredentials } from './poster/reddit.js';
+import { loginSession, hasXAccess, hasStoredSession } from './poster/x.js';
+import { dispatchPost, needsMedia, BROWSER_PLATFORMS } from './poster/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
@@ -34,7 +35,9 @@ const wrap = (fn) => (req, res) => {
 
 app.post('/api/generate', wrap(async (req, res) => {
   const { idea, platform, subreddit, count, angleId } = req.body || {};
-  if (!['x', 'reddit'].includes(platform)) return res.status(400).json({ error: 'Platform must be "x" or "reddit".' });
+  if (!isPlatform(platform)) {
+    return res.status(400).json({ error: `Unknown platform. Use one of: ${PLATFORM_KEYS.join(', ')}.` });
+  }
   if (platform === 'reddit' && !subreddit?.trim()) return res.status(400).json({ error: 'Subreddit is required for Reddit posts.' });
 
   let angle;
@@ -178,8 +181,8 @@ app.patch('/api/posts/:id', wrap(async (req, res) => {
 
 app.delete('/api/posts/:id', wrap(async (req, res) => {
   const post = getPost(Number(req.params.id));
-  if (post?.image_path) {
-    fs.rmSync(path.join(UPLOADS_DIR, path.basename(post.image_path)), { force: true });
+  for (const stored of [post?.image_path, post?.media_path]) {
+    if (stored) fs.rmSync(path.join(UPLOADS_DIR, path.basename(stored)), { force: true });
   }
   deletePost(Number(req.params.id));
   res.json({ ok: true });
@@ -221,6 +224,50 @@ app.delete('/api/posts/:id/image', wrap(async (req, res) => {
   res.json({ post: updated });
 }));
 
+// --- media (video for TikTok / YT Shorts, video or photo for Instagram) ---
+// The browser sends the raw file bytes (no base64, no multipart dependency);
+// express.json() above ignores these content types so req.body stays a Buffer.
+
+const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/x-m4v': 'm4v' };
+const MAX_MEDIA_BYTES = 200 * 1024 * 1024; // 200MB
+
+app.post(
+  '/api/posts/:id/media',
+  express.raw({ type: Object.keys(VIDEO_TYPES), limit: MAX_MEDIA_BYTES }),
+  wrap(async (req, res) => {
+    const post = getPost(Number(req.params.id));
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    if (!needsMedia(post.platform) && post.platform !== 'instagram') {
+      return res.status(400).json({ error: `Videos are only supported for TikTok, YT Shorts and Instagram (this post is ${platformLabel(post.platform)}).` });
+    }
+
+    const ext = VIDEO_TYPES[req.headers['content-type'] || ''];
+    if (!ext || !Buffer.isBuffer(req.body) || !req.body.length) {
+      return res.status(400).json({ error: 'Upload the video file as its raw body (mp4, mov, webm or m4v).' });
+    }
+
+    if (post.media_path) {
+      fs.rmSync(path.join(UPLOADS_DIR, path.basename(post.media_path)), { force: true });
+    }
+
+    const filename = `post-${post.id}-${Date.now()}.${ext}`;
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.body);
+
+    const updated = updatePost(post.id, { media_path: `/uploads/${filename}` });
+    res.json({ post: updated });
+  })
+);
+
+app.delete('/api/posts/:id/media', wrap(async (req, res) => {
+  const post = getPost(Number(req.params.id));
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  if (post.media_path) {
+    fs.rmSync(path.join(UPLOADS_DIR, path.basename(post.media_path)), { force: true });
+  }
+  const updated = updatePost(post.id, { media_path: null });
+  res.json({ post: updated });
+}));
+
 // --- approval + scheduling ---
 
 app.post('/api/posts/:id/approve', wrap(async (req, res) => {
@@ -247,12 +294,13 @@ app.post('/api/posts/:id/post-now', wrap(async (req, res) => {
     return res.status(400).json({ error: `Cannot post a post in "${post.status}" status.` });
   }
 
+  if (needsMedia(post.platform) && !post.media_path) {
+    return res.status(400).json({ error: `Attach a video file to this ${platformLabel(post.platform)} post before posting.` });
+  }
+
   updatePost(post.id, { status: 'posting' });
   try {
-    const result =
-      post.platform === 'reddit'
-        ? await submitPost({ subreddit: post.subreddit, title: post.title, body: post.body })
-        : await postToX({ body: post.body, imagePath: post.image_path });
+    const result = await dispatchPost(post);
     const updated = updatePost(post.id, { status: 'posted', posted_at: new Date().toISOString(), result_url: result?.url || null, error: null });
     res.json({ post: updated });
   } catch (err) {
@@ -274,6 +322,10 @@ app.post('/api/preview-reddit', wrap(async (req, res) => {
 app.get('/api/settings', wrap(async (req, res) => {
   const reddit = getRedditAccount();
   const active = activeProvider();
+  const browsers = {};
+  for (const [key, spec] of Object.entries(BROWSER_PLATFORMS)) {
+    browsers[key] = { label: spec.label, browser_session: await spec.hasAccess() };
+  }
   res.json({
     ai: {
       provider: active.key,
@@ -296,6 +348,8 @@ app.get('/api/settings', wrap(async (req, res) => {
       browser_session: hasStoredSession(),
       has_access: await hasXAccess(),
     },
+    platforms: { keys: PLATFORM_KEYS, video: VIDEO_PLATFORMS },
+    browsers,
   });
 }));
 
@@ -323,6 +377,15 @@ app.post('/api/settings/x/connect', wrap(async (req, res) => {
   // Opens a visible browser window; user logs in; session is stored.
   await loginSession();
   res.json({ ok: true, browser_session: true });
+}));
+
+// One connect endpoint for every browser-session platform (tiktok, yt_shorts,
+// instagram): opens a visible window, waits for login, stores the session.
+app.post('/api/settings/:platform/connect', wrap(async (req, res) => {
+  const spec = BROWSER_PLATFORMS[req.params.platform];
+  if (!spec) return res.status(404).json({ error: `Unknown platform "${req.params.platform}".` });
+  await spec.login();
+  res.json({ ok: true, platform: req.params.platform, browser_session: true });
 }));
 
 app.listen(config.port, () => {
