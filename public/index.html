@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Repurposer — Newsletter → X / Reddit</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <h1>📣 Repurposer</h1>
+    <p class="tagline">Turn your newsletter or blog idea into viral X posts and Reddit submissions.</p>
+    <nav>
+      <button class="tab-btn active" data-tab="create">Create</button>
+      <button class="tab-btn" data-tab="queue">Queue <span id="queue-badge" class="badge hidden">0</span></button>
+      <button class="tab-btn" data-tab="schedule">Schedule <span id="schedule-badge" class="badge hidden">0</span></button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- CREATE TAB -->
+    <section id="tab-create" class="tab active">
+      <div class="card">
+        <h2>1. Your idea</h2>
+        <textarea id="idea" rows="8" placeholder="Paste your newsletter content, blog idea, or just describe the concept..."></textarea>
+
+        <div class="row">
+          <label>Platform:</label>
+          <label class="radio"><input type="radio" name="platform" value="x" checked /> X</label>
+          <label class="radio"><input type="radio" name="platform" value="reddit" /> Reddit</label>
+        </div>
+
+        <div class="row hidden" id="subreddit-row">
+          <label for="subreddit">Subreddit (without r/):</label>
+          <input type="text" id="subreddit" placeholder="e.g. Entrepreneur" />
+        </div>
+
+        <div class="row">
+          <label for="count">Variants:</label>
+          <select id="count">
+            <option>3</option>
+            <option selected>4</option>
+            <option>5</option>
+            <option>6</option>
+            <option>7</option>
+            <option>8</option>
+          </select>
+          <button id="generate-btn" class="primary">✨ Generate viral ideas</button>
+        </div>
+        <p class="hint" id="gen-hint">AI will create multiple angles in viral formats popular on your chosen platform.</p>
+      </div>
+
+      <div id="variants" class="variants"></div>
+    </section>
+
+    <!-- QUEUE TAB -->
+    <section id="tab-queue" class="tab">
+      <h2>Post queue</h2>
+      <div id="queue"></div>
+    </section>
+
+    <!-- SCHEDULE TAB -->
+    <section id="tab-schedule" class="tab">
+      <div class="card">
+        <div class="row cal-nav">
+          <button id="cal-prev">←</button>
+          <h2 id="cal-title" style="margin:0;flex:1;text-align:center"></h2>
+          <button id="cal-next">→</button>
+        </div>
+        <div id="cal-grid" class="cal-grid"></div>
+        <p class="hint" id="cal-hint"></p>
+      </div>
+      <h2>Scheduled posts</h2>
+      <div id="schedule"></div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="tab-settings" class="tab">
+      <div class="card">
+        <h2>AI provider</h2>
+        <p class="hint">Which AI generates the post variants. Keys are read from <code>.env</code>; Ollama needs no key (local). Your choice is saved back to <code>AI_PROVIDER</code> in <code>.env</code>.</p>
+        <div class="row">
+          <label for="ai-provider">Provider:</label>
+          <select id="ai-provider" style="width:auto"></select>
+          <button id="ai-provider-save" class="primary">Save</button>
+          <span id="ai-provider-result" class="hint"></span>
+        </div>
+        <div id="ai-provider-detail" class="hint" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Status</h2>
+        <ul id="settings-status" class="status-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>Reddit account</h2>
+        <p class="hint">Create a free "script" app at <a href="https://www.reddit.com/prefs/apps" target="_blank" rel="noopener">reddit.com/prefs/apps</a> (redirect URI: <code>http://localhost:3000</code>), then fill these in.</p>
+        <div class="form-grid">
+          <label>Username <input id="reddit-username" type="text" placeholder="u/username" /></label>
+          <label>Password <input id="reddit-password" type="password" /></label>
+          <label>Client ID <input id="reddit-client-id" type="text" /></label>
+          <label>Client secret <input id="reddit-client-secret" type="password" /></label>
+        </div>
+        <div class="row">
+          <button id="reddit-save" class="primary">Save</button>
+          <button id="reddit-test">Test connection</button>
+          <span id="reddit-test-result" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>X account</h2>
+        <p class="hint">With a Bearer Token in <code>.env</code>, the official API is used (500 posts/month free). Otherwise click below to log in once in a browser window — the session is saved and reused.</p>
+        <div class="row">
+          <button id="x-connect" class="primary">🔗 Connect X Account (opens browser)</button>
+          <span id="x-connect-result" class="hint"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
