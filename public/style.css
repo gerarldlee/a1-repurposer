@@ -246,3 +246,167 @@ button.danger { color: var(--red); }
   max-width: 360px;
 }
 .toast.error { border-color: var(--red); }
+
+/* ---------------------------------------------------------------- knowledge */
+
+.status-running { background: #3b3524; color: var(--yellow); }
+.ok-text { color: var(--green); font-size: 0.9rem; }
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#knowledge-progress {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #12141c;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.knowledge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.knowledge-row:last-child { border-bottom: none; }
+.knowledge-row-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 6px 8px;
+}
+.knowledge-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.knowledge-row-main:hover { border: none; background: #232838; border-radius: 8px; }
+
+.knowledge-header { margin-bottom: 16px; }
+.knowledge-header h2 { margin: 0 0 4px; }
+.knowledge-header .row { margin-top: 10px; }
+
+.subtabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.subtab-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.subtab-btn:hover { border-color: var(--accent); }
+.subtab-btn.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+#knowledge-detail h3 { margin: 6px 0 4px; font-size: 1.05rem; }
+.section-body { display: flex; flex-direction: column; gap: 10px; }
+.summary-text { font-size: 0.95rem; line-height: 1.6; }
+
+.mini-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.mini-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.mini-card-title { margin: 0; font-weight: 600; font-size: 0.95rem; color: var(--text); text-decoration: none; }
+a.mini-card-title:hover { color: var(--accent); }
+.mini-card-line { margin: 4px 0 0; font-size: 0.88rem; color: var(--muted); }
+
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+.source-chip {
+  background: #242838;
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
+  text-decoration: none;
+}
+.source-chip:hover { border: 1px solid var(--accent); color: var(--accent); }
+
+.source-link {
+  display: block;
+  padding: 8px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-link:hover { border-color: var(--accent); color: var(--accent); }
+
+.severity {
+  border-radius: 10px;
+  padding: 1px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.severity-high { background: #472222; color: var(--red); }
+.severity-medium { background: #3b3524; color: var(--yellow); }
+.severity-low { background: #1d3d30; color: var(--green); }
+
+.quote {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.88rem;
+}
+
+.risk-list { margin: 0; padding-left: 20px; font-size: 0.9rem; }
+.risk-list li { margin-bottom: 6px; }
+
+/* ---------------------------------------------------------------- angles */
+
+.angle-card { position: relative; }
+.angle-title { margin: 8px 0 6px; font-size: 1.05rem; }
+.angle-facts {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.angle-facts li { margin-bottom: 4px; }
+.angle-controls { margin-top: 12px; }
+.angle-controls select { width: auto; }
+.angle-controls input { width: 160px; }
+.angle-del { position: absolute; top: 12px; right: 12px; padding: 4px 8px; }

@@ -4,8 +4,13 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config, AI_PROVIDERS, setAiProvider } from './config.js';
 import { generateVariants, activeProvider } from './ai.js';
+import { runKnowledgeExtraction, generateAngles } from './research.js';
 import { startScheduler } from './scheduler.js';
-import { createPost, getPost, listPosts, listScheduledPosts, updatePost, deletePost, saveRedditAccount, getRedditAccount } from './db.js';
+import {
+  createPost, getPost, listPosts, listScheduledPosts, updatePost, deletePost, saveRedditAccount, getRedditAccount,
+  createKnowledge, getKnowledge, listKnowledge, updateKnowledge, deleteKnowledge,
+  replaceAngles, listAngles, getAngle, deleteAngle,
+} from './db.js';
 import { submitPost, verifyCredentials } from './poster/reddit.js';
 import { postToX, loginSession, hasXAccess, hasStoredSession } from './poster/x.js';
 
@@ -28,20 +33,116 @@ const wrap = (fn) => (req, res) => {
 // --- generation ---
 
 app.post('/api/generate', wrap(async (req, res) => {
-  const { idea, platform, subreddit, count } = req.body || {};
-  if (!idea || !idea.trim()) return res.status(400).json({ error: 'Provide the idea or content to repurpose.' });
+  const { idea, platform, subreddit, count, angleId } = req.body || {};
   if (!['x', 'reddit'].includes(platform)) return res.status(400).json({ error: 'Platform must be "x" or "reddit".' });
   if (platform === 'reddit' && !subreddit?.trim()) return res.status(400).json({ error: 'Subreddit is required for Reddit posts.' });
 
+  let angle;
+  let sourceIdea;
+  if (angleId) {
+    const angleRow = getAngle(Number(angleId));
+    if (!angleRow) return res.status(404).json({ error: 'Angle not found.' });
+    const knowledge = getKnowledge(angleRow.knowledge_id);
+    if (!knowledge) return res.status(404).json({ error: 'Knowledge report for this angle was deleted.' });
+    angle = {
+      title: angleRow.title,
+      hook: angleRow.hook || '',
+      rationale: angleRow.rationale || '',
+      facts: angleRow.facts || [],
+      formats: angleRow.formats || [],
+    };
+    sourceIdea = knowledge.source_text;
+  } else {
+    sourceIdea = idea;
+    if (!sourceIdea || !sourceIdea.trim()) return res.status(400).json({ error: 'Provide the idea or content to repurpose.' });
+  }
+
   const variants = await generateVariants({
-    idea: idea.trim(),
+    idea: sourceIdea.trim(),
     platform,
     subreddit: subreddit?.trim(),
     count: Math.min(Math.max(Number(count) || 4, 1), 8),
+    angle,
   });
 
-  const saved = variants.map((v) => createPost({ source_idea: idea.trim(), ...v }));
+  const saved = variants.map((v) => createPost({ source_idea: sourceIdea.trim(), ...v }));
   res.json({ posts: saved });
+}));
+
+// --- knowledge extraction (background job) ---
+
+app.post('/api/knowledge', wrap(async (req, res) => {
+  const { text } = req.body || {};
+  if (!text || !text.trim()) return res.status(400).json({ error: 'Provide the idea, content, blog, or product to analyze.' });
+  if (!config.tavily.apiKey) {
+    return res.status(400).json({ error: 'TAVILY_API_KEY is not configured. Add it to .env (free key at tavily.com) and restart.' });
+  }
+
+  const trimmed = text.trim();
+  const row = createKnowledge({
+    source_text: trimmed,
+    title: trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed,
+  });
+
+  // fire-and-forget: progress + result are written to the row and read via polling
+  runKnowledgeExtraction(trimmed, {
+    onUpdate: (stage) => {
+      try {
+        updateKnowledge(row.id, { stage });
+      } catch (err) {
+        console.warn('[knowledge] stage update failed:', err.message);
+      }
+    },
+  })
+    .then((report) => {
+      updateKnowledge(row.id, { status: 'done', stage: 'done', report, title: report.title, error: null });
+    })
+    .catch((err) => {
+      console.error('[knowledge] extraction failed:', err);
+      updateKnowledge(row.id, { status: 'failed', error: err.message || 'Knowledge extraction failed.' });
+    });
+
+  res.json({ knowledge: row });
+}));
+
+app.get('/api/knowledge', wrap(async (req, res) => {
+  res.json({ knowledge: listKnowledge() });
+}));
+
+app.get('/api/knowledge/:id', wrap(async (req, res) => {
+  const row = getKnowledge(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Knowledge report not found.' });
+  res.json({ knowledge: row });
+}));
+
+app.delete('/api/knowledge/:id', wrap(async (req, res) => {
+  deleteKnowledge(Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// --- angles ---
+
+app.post('/api/knowledge/:id/angles', wrap(async (req, res) => {
+  const row = getKnowledge(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Knowledge report not found.' });
+  if (row.status !== 'done' || !row.report) {
+    return res.status(400).json({ error: 'Knowledge extraction is not finished yet.' });
+  }
+  const count = Math.min(Math.max(Number(req.body?.count) || 15, 5), 20);
+  const angles = await generateAngles(row.report, count);
+  const saved = replaceAngles(row.id, angles);
+  res.json({ angles: saved });
+}));
+
+app.get('/api/knowledge/:id/angles', wrap(async (req, res) => {
+  const row = getKnowledge(Number(req.params.id));
+  if (!row) return res.status(404).json({ error: 'Knowledge report not found.' });
+  res.json({ angles: listAngles(row.id) });
+}));
+
+app.delete('/api/angles/:id', wrap(async (req, res) => {
+  deleteAngle(Number(req.params.id));
+  res.json({ ok: true });
 }));
 
 // --- posts CRUD ---

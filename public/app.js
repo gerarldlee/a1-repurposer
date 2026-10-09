@@ -37,8 +37,15 @@ $$('.tab-btn').forEach((btn) => {
     if (btn.dataset.tab === 'queue') loadQueue();
     if (btn.dataset.tab === 'schedule') loadSchedule();
     if (btn.dataset.tab === 'settings') loadSettings();
+    if (btn.dataset.tab === 'knowledge') loadKnowledgeList();
+    if (btn.dataset.tab === 'angles') loadAnglesTab();
   });
 });
+
+function switchTab(name) {
+  const btn = $(`.tab-btn[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
 
 // ---------------------------------------------------------------- create
 
@@ -364,6 +371,609 @@ async function postNow(id, el) {
 function toLocalInput(d) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// ---------------------------------------------------------------- knowledge
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+const KNOWLEDGE_SECTIONS = [
+  { key: 'summary', label: 'Summary' },
+  { key: 'features', label: 'Features' },
+  { key: 'competitors', label: 'Competitors' },
+  { key: 'painPoints', label: 'Pain Points' },
+  { key: 'marketGap', label: 'Market Gap' },
+  { key: 'customers', label: 'Customers' },
+  { key: 'trends', label: 'Trends' },
+  { key: 'similarBets', label: 'Similar Bets' },
+  { key: 'penetration', label: 'Penetration' },
+  { key: 'pricing', label: 'Pricing' },
+  { key: 'positioning', label: 'Positioning' },
+  { key: 'wedge', label: 'Wedge' },
+  { key: 'risks', label: 'Risks' },
+  { key: 'sources', label: 'Sources' },
+];
+
+const KNOWLEDGE_STAGE_LABELS = {
+  parsing: '📄 Parsing your content…',
+  researching: '🌐 Researching the web — competitors, complaints, trends…',
+  synthesizing: '🧠 Synthesizing the knowledge report…',
+  done: '✅ Done',
+};
+
+let knowledgePollTimer = null;
+let currentKnowledgeId = null;
+let activeSubTab = 'summary';
+
+function stopKnowledgePoll() {
+  if (knowledgePollTimer) {
+    clearInterval(knowledgePollTimer);
+    knowledgePollTimer = null;
+  }
+}
+
+$('#knowledge-extract-btn').addEventListener('click', async () => {
+  const btn = $('#knowledge-extract-btn');
+  const text = $('#knowledge-text').value.trim();
+  if (!text) return toast('Paste your idea, content, or product first.', true);
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Starting…';
+  try {
+    const data = await api('/api/knowledge', { method: 'POST', body: { text } });
+    toast('Knowledge extraction started — watch the progress below.');
+    loadKnowledgeList();
+    startKnowledgePoll(data.knowledge.id);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Extract knowledge';
+  }
+});
+
+function startKnowledgePoll(id) {
+  stopKnowledgePoll();
+  const progress = $('#knowledge-progress');
+  progress.classList.remove('hidden');
+  const hint = $('#knowledge-hint');
+
+  const tick = async () => {
+    let data;
+    try {
+      data = await api(`/api/knowledge/${id}`);
+    } catch (err) {
+      stopKnowledgePoll();
+      progress.innerHTML = `<span class="error-text">${err.message}</span>`;
+      return;
+    }
+    const k = data.knowledge;
+    if (k.status === 'running') {
+      progress.innerHTML = `<span class="spinner"></span> ${KNOWLEDGE_STAGE_LABELS[k.stage] || 'Working…'}`;
+      hint.textContent = `Extracting: ${k.stage}`;
+      return;
+    }
+    stopKnowledgePoll();
+    hint.textContent = 'Takes ~30-60s: parse → web research → synthesis.';
+    if (k.status === 'failed') {
+      progress.innerHTML = `<span class="error-text">❌ ${k.error || 'Extraction failed.'}</span>`;
+      toast(k.error || 'Knowledge extraction failed.', true);
+    } else {
+      progress.innerHTML = '<span class="ok-text">✅ Knowledge report ready.</span>';
+      setTimeout(() => progress.classList.add('hidden'), 3000);
+      currentKnowledgeId = k.id;
+      renderKnowledgeReport(k);
+    }
+    loadKnowledgeList();
+    refreshKnowledgeSelect();
+  };
+
+  tick();
+  knowledgePollTimer = setInterval(tick, 2000);
+}
+
+async function loadKnowledgeList() {
+  const wrap = $('#knowledge-list');
+  try {
+    const data = await api('/api/knowledge');
+    if (!data.knowledge.length) {
+      wrap.innerHTML = '<p class="empty">No knowledge reports yet. Extract one above.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    data.knowledge.forEach((k) => {
+      const row = el('div', 'knowledge-row');
+      const main = el('button', 'knowledge-row-main');
+      const title = el('span', 'knowledge-row-title', k.title || `Report #${k.id}`);
+      const status =
+        k.status === 'running'
+          ? el('span', 'status-pill status-running', KNOWLEDGE_STAGE_LABELS[k.stage] ? `⏳ ${k.stage}` : 'running')
+          : k.status === 'failed'
+            ? el('span', 'status-pill status-failed', 'failed')
+            : el('span', 'status-pill status-posted', 'ready');
+      main.appendChild(title);
+      main.appendChild(status);
+      main.addEventListener('click', async () => {
+        try {
+          const full = await api(`/api/knowledge/${k.id}`);
+          if (full.knowledge.status !== 'done') {
+            if (full.knowledge.status === 'running') startKnowledgePoll(k.id);
+            return toast('This extraction is not finished yet.', true);
+          }
+          currentKnowledgeId = k.id;
+          renderKnowledgeReport(full.knowledge);
+          $('#knowledge-report').scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+      row.appendChild(main);
+      const del = el('button', 'danger', '🗑');
+      del.title = 'Delete report';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          await api(`/api/knowledge/${k.id}`, { method: 'DELETE' });
+          if (currentKnowledgeId === k.id) {
+            currentKnowledgeId = null;
+            $('#knowledge-report').classList.add('hidden');
+          }
+          loadKnowledgeList();
+          refreshKnowledgeSelect();
+          toast('Report deleted.');
+        } catch (err) {
+          toast(err.message, true);
+        }
+      });
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  } catch (err) {
+    wrap.innerHTML = `<p class="error-text">${err.message}</p>`;
+  }
+}
+
+function sourceChip(id, sources) {
+  const s = sources.get(id);
+  const chip = el('a', 'source-chip', id);
+  if (s) {
+    chip.href = s.url;
+    chip.target = '_blank';
+    chip.rel = 'noopener';
+    chip.title = s.title;
+  }
+  return chip;
+}
+
+function factCard(header, lines, { chips } = {}) {
+  const card = el('div', 'mini-card');
+  if (header) card.appendChild(el('p', 'mini-card-title', header));
+  (Array.isArray(lines) ? lines : [lines]).filter(Boolean).forEach((line) => {
+    if (typeof line === 'string') card.appendChild(el('p', 'mini-card-line', line));
+  });
+  if (chips && chips.length) {
+    const wrap = el('div', 'chip-row');
+    chips.forEach((id) => wrap.appendChild(sourceChip(id, sourcesMap)));
+    card.appendChild(wrap);
+  }
+  return card;
+}
+
+let sourcesMap = new Map();
+
+function sectionShell(label, description) {
+  const shell = el('div');
+  shell.appendChild(el('h3', null, label));
+  if (description) shell.appendChild(el('p', 'hint', description));
+  const body = el('div', 'section-body');
+  shell.appendChild(body);
+  return shell;
+}
+
+function emptyNote() {
+  return el('p', 'empty', 'Not enough evidence for this section.');
+}
+
+function renderKnowledgeSection(key, r) {
+  const sources = sourcesMap;
+  switch (key) {
+    case 'summary': {
+      const shell = sectionShell('Summary', 'Everything learned, in one place.');
+      const body = shell.querySelector('.section-body');
+      body.appendChild(el('p', 'summary-text', r.summary || 'No summary.'));
+      const meta = el('div', 'chip-row');
+      if (r.oneLiner) meta.appendChild(el('span', 'format-tag', r.oneLiner));
+      body.appendChild(meta);
+      return shell;
+    }
+    case 'features': {
+      const shell = sectionShell('Features', 'What the content/product does — and what evidence supports it.');
+      const body = shell.querySelector('.section-body');
+      if (!r.features.length) body.appendChild(emptyNote());
+      r.features.forEach((f) => body.appendChild(factCard(f.feature, [f.evidence], { chips: f.sourceIds })));
+      return shell;
+    }
+    case 'competitors': {
+      const shell = sectionShell('Competitors', 'Real products found in the sources.');
+      const body = shell.querySelector('.section-body');
+      if (!r.competitors.length) body.appendChild(emptyNote());
+      r.competitors.forEach((c) => {
+        const card = el('div', 'mini-card');
+        const head = el('div', 'mini-card-head');
+        const nameEl = c.url ? el('a', 'mini-card-title', c.name) : el('p', 'mini-card-title', c.name);
+        if (c.url) {
+          nameEl.href = c.url;
+          nameEl.target = '_blank';
+          nameEl.rel = 'noopener';
+        }
+        head.appendChild(nameEl);
+        const tags = el('span', 'chip-row');
+        tags.appendChild(el('span', 'format-tag', c.platform));
+        if (c.pricing) tags.appendChild(el('span', 'format-tag', c.pricing));
+        head.appendChild(tags);
+        card.appendChild(head);
+        if (c.description) card.appendChild(el('p', 'mini-card-line', c.description));
+        if (c.strengths.length) card.appendChild(el('p', 'mini-card-line', `✅ ${c.strengths.join(' · ')}`));
+        if (c.weaknesses.length) card.appendChild(el('p', 'mini-card-line', `⚠️ ${c.weaknesses.join(' · ')}`));
+        const chipRow = el('div', 'chip-row');
+        c.sourceIds.forEach((id) => chipRow.appendChild(sourceChip(id, sources)));
+        if (chipRow.children.length) card.appendChild(chipRow);
+        body.appendChild(card);
+      });
+      return shell;
+    }
+    case 'painPoints': {
+      const shell = sectionShell('Pain Points', 'Recurring complaints — each is an entry point.');
+      const body = shell.querySelector('.section-body');
+      if (!r.painPoints.length) body.appendChild(emptyNote());
+      r.painPoints.forEach((p) => {
+        const card = el('div', 'mini-card');
+        const head = el('div', 'mini-card-head');
+        head.appendChild(el('p', 'mini-card-title', p.theme));
+        head.appendChild(el('span', `severity severity-${p.severity}`, p.severity));
+        card.appendChild(head);
+        if (p.who) card.appendChild(el('p', 'mini-card-line', `Who: ${p.who}`));
+        p.evidence.forEach((q) => card.appendChild(el('p', 'quote', `“${q}”`)));
+        if (p.opportunity) card.appendChild(el('p', 'mini-card-line', `💡 Opportunity: ${p.opportunity}`));
+        const chipRow = el('div', 'chip-row');
+        p.sourceIds.forEach((id) => chipRow.appendChild(sourceChip(id, sources)));
+        if (chipRow.children.length) card.appendChild(chipRow);
+        body.appendChild(card);
+      });
+      return shell;
+    }
+    case 'marketGap': {
+      const shell = sectionShell('Market Gap', 'The unserved need.');
+      const body = shell.querySelector('.section-body');
+      if (!r.marketGap.description) body.appendChild(emptyNote());
+      else {
+        body.appendChild(factCard(null, [`Gap: ${r.marketGap.description}`, `Evidence: ${r.marketGap.evidence}`, `💡 Opportunity: ${r.marketGap.opportunity}`], { chips: r.marketGap.sourceIds }));
+      }
+      return shell;
+    }
+    case 'customers': {
+      const shell = sectionShell('Customers', 'Segments worth winning.');
+      const body = shell.querySelector('.section-body');
+      if (!r.customers.length) body.appendChild(emptyNote());
+      r.customers.forEach((c) => body.appendChild(factCard(c.segment, [`Needs: ${c.needs}`, `Willingness to pay: ${c.willingnessToPay}`, `Where they hang out: ${c.whereTheyHangOut}`], { chips: c.sourceIds })));
+      return shell;
+    }
+    case 'trends': {
+      const shell = sectionShell('Trends', 'Market direction signals.');
+      const body = shell.querySelector('.section-body');
+      if (!r.trends.length) body.appendChild(emptyNote());
+      r.trends.forEach((t) => body.appendChild(factCard(t.signal, [t.interpretation], { chips: t.sourceIds })));
+      return shell;
+    }
+    case 'similarBets': {
+      const shell = sectionShell('Similar Bets', 'Companies that made adjacent bets — and how it went.');
+      const body = shell.querySelector('.section-body');
+      if (!r.similarBets.length) body.appendChild(emptyNote());
+      r.similarBets.forEach((b) => {
+        const card = el('div', 'mini-card');
+        const head = el('div', 'mini-card-head');
+        head.appendChild(el('p', 'mini-card-title', b.company));
+        head.appendChild(el('span', `severity severity-${b.outcome === 'died' ? 'high' : b.outcome === 'grew' || b.outcome === 'acquired' ? 'low' : 'medium'}`, b.outcome));
+        card.appendChild(head);
+        if (b.whatTheyDo) card.appendChild(el('p', 'mini-card-line', b.whatTheyDo));
+        if (b.stage) card.appendChild(el('p', 'mini-card-line', `Stage: ${b.stage}`));
+        if (b.lesson) card.appendChild(el('p', 'mini-card-line', `Lesson: ${b.lesson}`));
+        const chipRow = el('div', 'chip-row');
+        b.sourceIds.forEach((id) => chipRow.appendChild(sourceChip(id, sources)));
+        if (chipRow.children.length) card.appendChild(chipRow);
+        body.appendChild(card);
+      });
+      return shell;
+    }
+    case 'penetration': {
+      const shell = sectionShell('Market Penetration Strategy', 'How a new entrant gets in.');
+      const body = shell.querySelector('.section-body');
+      if (!r.penetration.beachhead) body.appendChild(emptyNote());
+      else {
+        body.appendChild(factCard(null, [`Beachhead: ${r.penetration.beachhead}`, `Channels: ${r.penetration.channels.join(' · ')}`, r.penetration.rationale]));
+      }
+      return shell;
+    }
+    case 'pricing': {
+      const shell = sectionShell('Pricing', 'What the market charges — and what to charge.');
+      const body = shell.querySelector('.section-body');
+      if (!r.pricing.benchmark.range && !r.pricing.recommendation) body.appendChild(emptyNote());
+      else {
+        body.appendChild(factCard(null, [`Benchmark: ${r.pricing.benchmark.range || '—'} (median ${r.pricing.benchmark.median || '—'})`, r.pricing.benchmark.notes, `💡 Recommendation: ${r.pricing.recommendation}`], { chips: r.pricing.sourceIds }));
+      }
+      return shell;
+    }
+    case 'positioning': {
+      const shell = sectionShell('Positioning', 'How to be different.');
+      const body = shell.querySelector('.section-body');
+      if (!r.positioning.statement) body.appendChild(emptyNote());
+      else {
+        body.appendChild(factCard(null, [r.positioning.statement, ...(r.positioning.differentiators || []).map((d) => `• ${d}`)]));
+      }
+      return shell;
+    }
+    case 'wedge': {
+      const shell = sectionShell('Wedge', 'The one sharp angle to lead with.');
+      const body = shell.querySelector('.section-body');
+      if (!r.wedge.wedge) body.appendChild(emptyNote());
+      else body.appendChild(factCard(null, [r.wedge.wedge, r.wedge.why]));
+      return shell;
+    }
+    case 'risks': {
+      const shell = sectionShell('Risks', 'What could kill it.');
+      const body = shell.querySelector('.section-body');
+      if (!r.risks.length) body.appendChild(emptyNote());
+      else {
+        const ul = el('ul', 'risk-list');
+        r.risks.forEach((risk) => {
+          const li = el('li');
+          li.textContent = `⚠️ ${risk}`;
+          ul.appendChild(li);
+        });
+        body.appendChild(ul);
+      }
+      return shell;
+    }
+    case 'sources': {
+      const shell = sectionShell('Sources', 'Every claim links back to a source.');
+      const body = shell.querySelector('.section-body');
+      if (!r.sources.length) body.appendChild(emptyNote());
+      r.sources.forEach((s) => {
+        const a = el('a', 'source-link', `${s.id} — ${s.title}`);
+        a.href = s.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        body.appendChild(a);
+      });
+      return shell;
+    }
+    default:
+      return el('p', 'empty', 'Unknown section.');
+  }
+}
+
+function renderKnowledgeReport(k) {
+  const r = k.report;
+  sourcesMap = new Map((r.sources || []).map((s) => [s.id, s]));
+
+  const wrap = $('#knowledge-report');
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = '';
+
+  const header = el('div', 'knowledge-header');
+  header.appendChild(el('h2', null, r.title || k.title || 'Knowledge report'));
+  if (r.oneLiner) header.appendChild(el('p', 'hint', r.oneLiner));
+  const ctaRow = el('div', 'row');
+  const cta = el('button', 'primary', '🎯 Generate angles from this knowledge');
+  cta.addEventListener('click', () => openAnglesFor(k.id));
+  ctaRow.appendChild(cta);
+  header.appendChild(ctaRow);
+  wrap.appendChild(header);
+
+  const subtabs = el('div', 'subtabs');
+  KNOWLEDGE_SECTIONS.forEach((s) => {
+    const btn = el('button', `subtab-btn${s.key === activeSubTab ? ' active' : ''}`, s.label);
+    btn.addEventListener('click', () => {
+      activeSubTab = s.key;
+      subtabs.querySelectorAll('.subtab-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderActiveSection();
+    });
+    subtabs.appendChild(btn);
+  });
+  wrap.appendChild(subtabs);
+
+  const detail = el('div', null);
+  detail.id = 'knowledge-detail';
+  wrap.appendChild(detail);
+
+  function renderActiveSection() {
+    detail.innerHTML = '';
+    const section = KNOWLEDGE_SECTIONS.find((s) => s.key === activeSubTab);
+    detail.appendChild(renderKnowledgeSection(activeSubTab, r, section));
+  }
+  renderActiveSection();
+}
+
+// ---------------------------------------------------------------- angles
+
+async function refreshKnowledgeSelect() {
+  const select = $('#angles-report');
+  const previous = select.value;
+  let data;
+  try {
+    data = await api('/api/knowledge');
+  } catch {
+    return;
+  }
+  const usable = data.knowledge.filter((k) => k.status === 'done' || k.status === 'running');
+  select.innerHTML = '';
+  if (!usable.length) {
+    const opt = el('option', null, '— extract knowledge first —');
+    opt.value = '';
+    select.appendChild(opt);
+    return;
+  }
+  usable.forEach((k) => {
+    const opt = el('option', null, `${k.status === 'done' ? '' : '⏳ '}${k.title || `Report #${k.id}`}`);
+    opt.value = k.id;
+    select.appendChild(opt);
+  });
+  if (previous && usable.some((k) => String(k.id) === previous)) select.value = previous;
+}
+
+async function loadAnglesTab() {
+  await refreshKnowledgeSelect();
+  const id = $('#angles-report').value;
+  if (id) await loadAngles(id);
+  else $('#angles-list').innerHTML = '<p class="empty">Extract knowledge first (Knowledge tab), then generate angles from it.</p>';
+}
+
+function openAnglesFor(knowledgeId) {
+  switchTab('angles');
+  refreshKnowledgeSelect().then(() => {
+    $('#angles-report').value = String(knowledgeId);
+    loadAngles(knowledgeId);
+  });
+}
+
+async function loadAngles(knowledgeId) {
+  const wrap = $('#angles-list');
+  try {
+    const data = await api(`/api/knowledge/${knowledgeId}/angles`);
+    if (!data.angles.length) {
+      wrap.innerHTML = '<p class="empty">No angles yet for this report — generate some above.</p>';
+      return;
+    }
+    wrap.innerHTML = '';
+    data.angles.forEach((a) => wrap.appendChild(angleCard(a)));
+  } catch (err) {
+    wrap.innerHTML = `<p class="error-text">${err.message}</p>`;
+  }
+}
+
+$('#angles-generate-btn').addEventListener('click', async () => {
+  const btn = $('#angles-generate-btn');
+  const id = $('#angles-report').value;
+  if (!id) return toast('Extract a knowledge report first.', true);
+  const k = await api(`/api/knowledge/${id}`);
+  if (k.knowledge.status !== 'done') return toast('That report is still extracting.', true);
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Mining angles…';
+  try {
+    const data = await api(`/api/knowledge/${id}/angles`, {
+      method: 'POST',
+      body: { count: Number($('#angles-count').value) },
+    });
+    toast(`Generated ${data.angles.length} angles.`);
+    const wrap = $('#angles-list');
+    wrap.innerHTML = '';
+    data.angles.forEach((a) => wrap.appendChild(angleCard(a)));
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🎯 Generate angles';
+  }
+});
+
+function angleCard(a) {
+  const card = el('div', 'variant angle-card');
+  card.dataset.id = a.id;
+
+  const tags = el('div', 'chip-row');
+  tags.appendChild(el('span', 'format-tag', a.platformFit === 'both' ? 'X + Reddit' : a.platformFit));
+  (a.formats || []).forEach((f) => tags.appendChild(el('span', 'format-tag', f)));
+
+  const title = el('h3', 'angle-title', a.title);
+  const hook = a.hook ? el('p', 'quote', `“${a.hook}”`) : null;
+  const rationale = a.rationale ? el('p', 'mini-card-line', a.rationale) : null;
+
+  const facts = el('ul', 'angle-facts');
+  (a.facts || []).forEach((f) => {
+    const li = el('li');
+    li.textContent = f;
+    facts.appendChild(li);
+  });
+
+  // generate-posts controls
+  const controls = el('div', 'row angle-controls');
+  const platformSel = el('select');
+  platformSel.className = 'angle-platform';
+  const defaultPlatform = a.platformFit === 'reddit' ? 'reddit' : 'x';
+  [
+    { v: 'x', t: 'X' },
+    { v: 'reddit', t: 'Reddit' },
+  ].forEach((o) => {
+    const opt = el('option', null, o.t);
+    opt.value = o.v;
+    platformSel.appendChild(opt);
+  });
+  platformSel.value = defaultPlatform;
+
+  const subInput = el('input', 'angle-subreddit');
+  subInput.type = 'text';
+  subInput.placeholder = 'subreddit (no r/)';
+  subInput.style.display = defaultPlatform === 'reddit' ? '' : 'none';
+  platformSel.addEventListener('change', () => {
+    subInput.style.display = platformSel.value === 'reddit' ? '' : 'none';
+  });
+
+  const genBtn = el('button', 'primary', '✨ Generate posts from this angle');
+  genBtn.addEventListener('click', async () => {
+    genBtn.disabled = true;
+    genBtn.textContent = '⏳ Generating…';
+    try {
+      const data = await api('/api/generate', {
+        method: 'POST',
+        body: {
+          angleId: a.id,
+          platform: platformSel.value,
+          subreddit: platformSel.value === 'reddit' ? subInput.value.trim() : undefined,
+          count: 4,
+        },
+      });
+      switchTab('create');
+      renderVariants(data.posts);
+      toast(`Generated ${data.posts.length} posts from "${a.title}".`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      toast(err.message, true);
+    } finally {
+      genBtn.disabled = false;
+      genBtn.textContent = '✨ Generate posts from this angle';
+    }
+  });
+
+  controls.appendChild(platformSel);
+  controls.appendChild(subInput);
+  controls.appendChild(genBtn);
+
+  const del = el('button', 'danger angle-del', '🗑');
+  del.title = 'Delete angle';
+  del.addEventListener('click', async () => {
+    try {
+      await api(`/api/angles/${a.id}`, { method: 'DELETE' });
+      card.remove();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  card.appendChild(tags);
+  card.appendChild(title);
+  if (hook) card.appendChild(hook);
+  if (rationale) card.appendChild(rationale);
+  if (facts.children.length) card.appendChild(facts);
+  card.appendChild(controls);
+  card.appendChild(del);
+  return card;
 }
 
 // ---------------------------------------------------------------- queue

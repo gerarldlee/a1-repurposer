@@ -24,6 +24,7 @@ Open **http://localhost:3000**
 | Ollama | `.env` → `OLLAMA_BASE_URL` + `OLLAMA_MODEL` (local, free, no key) |
 | Reddit account | Settings tab in the UI, or `.env` |
 | X account | `.env` → `X_BEARER_TOKEN` (official API, 500 posts/mo free) **or** "Connect X Account" button in Settings (browser session, no API needed) |
+| Research (Knowledge tab) | `.env` → `TAVILY_API_KEY` (from tavily.com, free tier: 1000 searches/mo) |
 
 The active provider is shown on the server startup line and in the Settings tab; you can switch providers without restarting. Switching in the Settings tab writes `AI_PROVIDER=...` back to `.env`, so `.env` is always the single source of truth — editing it by hand works too (restart to pick up manual edits). Providers that aren't configured stay visible but unusable, so you can flip between them freely.
 
@@ -37,9 +38,11 @@ The active provider is shown on the server startup line and in the Settings tab;
 ## How it works
 
 1. **Create** — paste your idea/content, pick platform (X or Reddit + subreddit), hit Generate. AI produces 3–8 variants in proven viral formats.
-2. **Approve** — edit, regenerate individual variants, attach a screenshot (X), approve the ones you like.
-3. **Schedule** — pick a date/time (or post immediately).
-4. **Auto-post** — a scheduler checks every minute and publishes due posts. Reddit goes through the official API; X tries the official API first (if configured) and falls back to a saved browser session.
+2. **Knowledge** — the same idea/content/blog/product runs through a research pipeline: it's parsed into a brief, the web is swept (Tavily) for competitors, complaints, trends and similar startups, then synthesized into a knowledge report with sub-tabs (Features, Competitors, Pain Points, Market Gap, Customers, Trends, Similar Bets, Penetration, Pricing, Positioning, Wedge, Risks, Sources). Runs in the background with live progress; every claim cites its sources.
+3. **Angles** — from a knowledge report, generate 10–20 distinct content angles, each grounded in a specific fact (a pain point, a competitor weakness, a trend, a pricing gap, a similar startup's lesson) with a hook and suggested viral formats. Each angle has a "Generate posts from this angle" button that feeds the Create tab's generator with the angle + its supporting evidence.
+4. **Approve** — edit, regenerate individual variants, attach a screenshot (X), approve the ones you like.
+5. **Schedule** — pick a date/time (or post immediately).
+6. **Auto-post** — a scheduler checks every minute and publishes due posts. Reddit goes through the official API; X tries the official API first (if configured) and falls back to a saved browser session.
 
 ### X viral formats (8)
 

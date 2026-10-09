@@ -12,6 +12,8 @@
     <p class="tagline">Turn your newsletter or blog idea into viral X posts and Reddit submissions.</p>
     <nav>
       <button class="tab-btn active" data-tab="create">Create</button>
+      <button class="tab-btn" data-tab="knowledge">Knowledge</button>
+      <button class="tab-btn" data-tab="angles">Angles</button>
       <button class="tab-btn" data-tab="queue">Queue <span id="queue-badge" class="badge hidden">0</span></button>
       <button class="tab-btn" data-tab="schedule">Schedule <span id="schedule-badge" class="badge hidden">0</span></button>
       <button class="tab-btn" data-tab="settings">Settings</button>
@@ -52,6 +54,52 @@
       </div>
 
       <div id="variants" class="variants"></div>
+    </section>
+
+    <!-- KNOWLEDGE TAB -->
+    <section id="tab-knowledge" class="tab">
+      <div class="card">
+        <h2>Extract knowledge</h2>
+        <p class="hint">Paste an idea, newsletter, blog post, or product description. AI parses it, researches the web (competitors, complaints, trends, similar startups), and distills everything it learns — with sources.</p>
+        <textarea id="knowledge-text" rows="6" placeholder="Paste your idea, content, blog, or product description..."></textarea>
+        <div class="row">
+          <button id="knowledge-extract-btn" class="primary">🔍 Extract knowledge</button>
+          <span class="hint" id="knowledge-hint">Takes ~30-60s: parse → web research → synthesis.</span>
+        </div>
+        <div id="knowledge-progress" class="hidden"></div>
+      </div>
+
+      <div class="card">
+        <h2>Your knowledge reports</h2>
+        <div id="knowledge-list"><p class="hint">Loading…</p></div>
+      </div>
+
+      <div id="knowledge-report" class="hidden">
+        <div class="subtabs" id="knowledge-subtabs"></div>
+        <div id="knowledge-detail"></div>
+      </div>
+    </section>
+
+    <!-- ANGLES TAB -->
+    <section id="tab-angles" class="tab">
+      <div class="card">
+        <h2>Generate angles</h2>
+        <p class="hint">Each angle is a distinct take mined from a knowledge report — a pain point, a competitor weakness, a trend, a pricing gap, a startup story — ready to turn into posts.</p>
+        <div class="row">
+          <label for="angles-report">Knowledge report:</label>
+          <select id="angles-report" style="flex:1;min-width:200px"></select>
+        </div>
+        <div class="row">
+          <label for="angles-count">How many:</label>
+          <select id="angles-count">
+            <option>5</option><option>8</option><option selected>12</option><option>15</option><option>20</option>
+          </select>
+          <button id="angles-generate-btn" class="primary">🎯 Generate angles</button>
+        </div>
+        <p class="hint" id="angles-hint">Old angles for the selected report are replaced when you regenerate.</p>
+      </div>
+
+      <div id="angles-list"><p class="empty">Pick a knowledge report and generate angles.</p></div>
     </section>
 
     <!-- QUEUE TAB -->

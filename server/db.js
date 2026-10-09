@@ -33,6 +33,29 @@ db.exec(`
     client_secret TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_text TEXT NOT NULL,
+    title TEXT,
+    status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','done','failed')),
+    stage TEXT NOT NULL DEFAULT 'parsing',
+    report TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS angles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    hook TEXT,
+    rationale TEXT,
+    facts TEXT,
+    formats TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Migration for databases created before image support
@@ -96,6 +119,109 @@ export function deletePost(id) {
 
 export function getRedditAccount() {
   return db.prepare('SELECT * FROM reddit_accounts ORDER BY id DESC LIMIT 1').get();
+}
+
+// ---------------------------------------------------------------- knowledge
+
+export function createKnowledge({ source_text, title }) {
+  const stmt = db.prepare(`
+    INSERT INTO knowledge (source_text, title)
+    VALUES (@source_text, @title)
+  `);
+  const info = stmt.run({ source_text, title: title || null });
+  return getKnowledgeRaw(info.lastInsertRowid);
+}
+
+function getKnowledgeRaw(id) {
+  return db.prepare('SELECT * FROM knowledge WHERE id = ?').get(id);
+}
+
+export function getKnowledge(id) {
+  const row = getKnowledgeRaw(id);
+  if (!row) return null;
+  return {
+    ...row,
+    report: row.report ? JSON.parse(row.report) : null,
+  };
+}
+
+// List for pickers — no report/source payload
+export function listKnowledge() {
+  return db
+    .prepare('SELECT id, title, status, stage, error, created_at, updated_at FROM knowledge ORDER BY id DESC')
+    .all();
+}
+
+export function updateKnowledge(id, fields) {
+  const allowed = ['title', 'status', 'stage', 'report', 'error'];
+  const updates = [];
+  const values = {};
+  for (const key of allowed) {
+    if (key in fields && fields[key] !== undefined) {
+      updates.push(`${key} = @${key}`);
+      // report is stored as JSON text
+      values[key] = key === 'report' ? JSON.stringify(fields[key]) : fields[key];
+    }
+  }
+  if (!updates.length) return getKnowledgeRaw(id);
+  updates.push('updated_at = @updated_at');
+  values.updated_at = now();
+  values.id = id;
+  db.prepare(`UPDATE knowledge SET ${updates.join(', ')} WHERE id = @id`).run(values);
+  return getKnowledgeRaw(id);
+}
+
+export function deleteKnowledge(id) {
+  db.prepare('DELETE FROM angles WHERE knowledge_id = ?').run(id);
+  db.prepare('DELETE FROM knowledge WHERE id = ?').run(id);
+}
+
+// ---------------------------------------------------------------- angles
+
+export function replaceAngles(knowledgeId, angles) {
+  const insert = db.prepare(`
+    INSERT INTO angles (knowledge_id, title, hook, rationale, facts, formats)
+    VALUES (@knowledge_id, @title, @hook, @rationale, @facts, @formats)
+  `);
+  const rows = angles.map((a) => ({
+    knowledge_id: knowledgeId,
+    title: a.title || 'Untitled angle',
+    hook: a.hook || null,
+    rationale: a.rationale || null,
+    facts: a.facts ? JSON.stringify(a.facts) : null,
+    formats: a.formats ? JSON.stringify(a.formats) : null,
+  }));
+  const run = db.transaction((items) => {
+    db.prepare('DELETE FROM angles WHERE knowledge_id = ?').run(knowledgeId);
+    for (const row of items) insert.run(row);
+  });
+  run(rows);
+  return listAngles(knowledgeId);
+}
+
+export function listAngles(knowledgeId) {
+  return db
+    .prepare('SELECT * FROM angles WHERE knowledge_id = ? ORDER BY id ASC')
+    .all(knowledgeId)
+    .map((row) => ({
+      ...row,
+      facts: row.facts ? JSON.parse(row.facts) : [],
+      formats: row.formats ? JSON.parse(row.formats) : [],
+    }));
+}
+
+export function getAngle(id) {
+  const row = db.prepare('SELECT * FROM angles WHERE id = ?').get(id);
+  if (!row) return null;
+  return {
+    ...row,
+    facts: row.facts ? JSON.parse(row.facts) : [],
+    formats: row.formats ? JSON.parse(row.formats) : [],
+  };
+}
+
+export function deleteAngle(id) {
+  db.prepare('DELETE FROM angles WHERE id = ?').run(id);
 }
 
 export function saveRedditAccount({ username, password, client_id, client_secret }) {

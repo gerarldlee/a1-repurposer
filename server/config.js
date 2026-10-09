@@ -61,6 +61,9 @@ export const config = {
   x: {
     bearerToken: env('X_BEARER_TOKEN'),
   },
+  tavily: {
+    apiKey: env('TAVILY_API_KEY'),
+  },
 };
 
 // Persist the provider choice: runtime config + .env file (single source of

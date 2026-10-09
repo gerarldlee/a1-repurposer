@@ -85,9 +85,26 @@ const REDDIT_FORMATS = [
   },
 ];
 
-function buildPrompt(idea, platform, subreddit, count) {
+// Format names (for angle suggestions elsewhere in the app)
+export const FORMAT_NAMES = {
+  x: X_FORMATS.map((f) => f.format),
+  reddit: REDDIT_FORMATS.map((f) => f.format),
+};
+
+function buildPrompt(idea, platform, subreddit, count, angle) {
   const formats = platform === 'x' ? X_FORMATS : REDDIT_FORMATS;
   const formatList = formats.map((f) => `- "${f.format}": ${f.description}`).join('\n');
+
+  const angleBlock = angle
+    ? `
+CONTENT ANGLE — every variant must be written from this specific angle (not the generic idea):
+- Title: ${angle.title}
+- Hook: ${angle.hook || '—'}
+- Why it works: ${angle.rationale || '—'}
+${angle.facts?.length ? `- Supporting facts (ground every claim in these; do not invent statistics beyond them):\n${angle.facts.map((f) => `  * ${f}`).join('\n')}` : ''}
+${angle.formats?.length ? `- Suggested formats for this angle: ${angle.formats.join(', ')} (prefer these, but any listed format is allowed if it fits better).` : ''}
+`
+    : '';
 
   const platformRules =
     platform === 'x'
@@ -113,7 +130,7 @@ SOURCE IDEA/CONTENT:
 """
 ${idea}
 """
-
+${angleBlock}
 ${platformRules}
 
 Generate ${count} post variants, each using a DIFFERENT one of these proven viral formats:
@@ -134,30 +151,26 @@ For "thread" format on X, join the individual posts with the separator "\\n\\n--
 
 Rules:
 - Each variant must take a genuinely different angle on the source idea.
+${angle ? '- All variants stay on the given CONTENT ANGLE but attack it from different directions (different formats, different entry points, different emotions).' : ''}
 - Optimize for saves, shares, replies, and upvotes - not just impressions.
 - Never invent fake statistics, quotes, or claims not implied by the source.`;
 }
 
-export async function generateVariants({ idea, platform, subreddit, count = 4 }) {
+// Shared chat-with-JSON-response helper: picks up the active provider, tries
+// response_format first (OpenAI/OpenRouter), retries without it (Ollama etc.),
+// and repairs loosely-formatted JSON output.
+export async function chatJSON({ system, prompt, temperature = 0.9 }) {
   const provider = activeProvider();
   providerCheck(provider);
 
   const client = new OpenAI({ apiKey: provider.apiKey, baseURL: provider.baseUrl });
-  const prompt = buildPrompt(idea, platform, subreddit, count);
-
-  // response_format is supported by OpenAI/OpenRouter; Ollama only if the model supports it,
-  // so we try with it and retry without on a 400.
   const baseRequest = {
     model: provider.model,
     messages: [
-      {
-        role: 'system',
-        content:
-          'You write viral social content and always respond with strictly valid JSON. No markdown fences.',
-      },
+      { role: 'system', content: system },
       { role: 'user', content: prompt },
     ],
-    temperature: 0.9,
+    temperature,
   };
 
   let completion;
@@ -179,14 +192,22 @@ export async function generateVariants({ idea, platform, subreddit, count = 4 })
   const raw = completion.choices[0]?.message?.content;
   if (!raw) throw new Error('AI returned an empty response');
 
-  let parsed;
   try {
-    parsed = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch {
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('Could not parse AI response as JSON');
-    parsed = JSON.parse(match[0]);
+    return JSON.parse(match[0]);
   }
+}
+
+export async function generateVariants({ idea, platform, subreddit, count = 4, angle }) {
+  const prompt = buildPrompt(idea, platform, subreddit, count, angle);
+
+  const parsed = await chatJSON({
+    system: 'You write viral social content and always respond with strictly valid JSON. No markdown fences.',
+    prompt,
+  });
 
   const variants = Array.isArray(parsed.variants) ? parsed.variants : [];
   if (!variants.length) throw new Error('AI returned no variants');
